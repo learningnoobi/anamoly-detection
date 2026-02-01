@@ -1,188 +1,65 @@
-"""
-Quick demonstration for running with synthetic data.
-Runs a complete pipeline from data generation to evaluation.
-"""
+from load_data  import load_data, NUM_CLASSES
+from preprocess import prepare_data
 
-import torch
-import numpy as np
-from pathlib import Path
+csv_path = sys.argv[1] if len(sys.argv) > 1 else "train_test_network.csv"
 
-# Import modules
-from src.load_data import ToNIoTDataLoader
-from src.preprocess import NetworkTrafficPreprocessor, prepare_dataloaders
-from src.model import TransformerCVAE
-from src.train import Trainer
-from src.evaluate import AnomalyDetectionEvaluator
+# ── 1. Load raw data ──────────────────────────────────
+X, y = load_data()
 
+# ── 2. Extract categorical metadata for the model ──
+#   load_data() appends columns in this order:
+#       NUMERIC_FEATURES (16)  |  proto_enc, service_enc, conn_state_enc  |  bool_enc (7)
+#   The model needs to know which columns are categorical so it can route
+#   them through nn.Embedding instead of the linear projection.
+cat_col_names   = ['proto_enc', 'service_enc', 'conn_state_enc']
+col_list        = X.columns.tolist()
+cat_indices     = [col_list.index(c) for c in cat_col_names]
+cat_vocab_sizes = [int(X[c].max()) + 1 for c in cat_col_names]
+num_numeric     = len(col_list) - len(cat_indices)   # numeric + boolean columns
 
-def run_demo(n_samples=15000, num_epochs=20, save_results=True):
-    """
-    Run complete anomaly detection pipeline.
-    
-    Args:
-        n_samples: Number of samples to generate
-        num_epochs: Number of training epochs
-        save_results: Whether to save results
-    """
-    print("="*70)
-    print("TRANSFORMER-CVAE NETWORK ANOMALY DETECTION - DEMO")
-    print("="*70)
-    
-    # Setup
-    device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    print(f"\nDevice: {device}")
-    print(f"PyTorch version: {torch.__version__}")
-    
-    # 1. Load/Generate Data
-    print("\n" + "="*70)
-    print("STEP 1: Data Loading")
-    print("="*70)
-    
-    loader = ToNIoTDataLoader()
-    X, y = loader.load_data(use_synthetic=True, n_samples=n_samples)
-    
-    print(f"\nDataset Summary:")
-    print(f"  Total samples: {len(X):,}")
-    print(f"  Features: {X.shape[1]}")
-    print(f"  Normal samples: {(y==0).sum():,} ({(y==0).mean()*100:.1f}%)")
-    print(f"  Anomaly samples: {(y==1).sum():,} ({(y==1).mean()*100:.1f}%)")
-    
-    # 2. Preprocess Data
-    print("\n" + "="*70)
-    print("STEP 2: Data Preprocessing")
-    print("="*70)
-    
-    preprocessor = NetworkTrafficPreprocessor(sequence_length=10, stride=5)
-    X_seq, y_seq = preprocessor.fit_transform(X, y)
-    
-    print(f"\nSequence Statistics:")
-    print(f"  Total sequences: {len(X_seq):,}")
-    print(f"  Sequence shape: {X_seq.shape}")
-    print(f"  Normal sequences: {(y_seq==0).sum():,}")
-    print(f"  Anomaly sequences: {(y_seq==1).sum():,}")
-    
-    # 3. Create DataLoaders
-    print("\nCreating train/val/test splits...")
-    dataloaders = prepare_dataloaders(X_seq, y_seq, batch_size=64)
-    
-    # 4. Initialize Model
-    print("\n" + "="*70)
-    print("STEP 3: Model Initialization")
-    print("="*70)
-    
-    model = TransformerCVAE(
-        input_dim=X.shape[1],
-        seq_len=10,
-        d_model=128,
-        nhead=8,
-        num_layers=3,
-        latent_dim=64,
-        vae_hidden_dim=256
-    )
-    
-    total_params = sum(p.numel() for p in model.parameters())
-    trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    
-    print(f"\nModel Architecture:")
-    print(f"  Total parameters: {total_params:,}")
-    print(f"  Trainable parameters: {trainable_params:,}")
-    print(f"\n  Components:")
-    for name, module in model.named_children():
-        params = sum(p.numel() for p in module.parameters())
-        print(f"    - {name}: {params:,} parameters")
-    
-    # 5. Train Model
-    print("\n" + "="*70)
-    print("STEP 4: Model Training")
-    print("="*70)
-    
-    trainer = Trainer(model, device=device, learning_rate=1e-3, beta=0.5)
-    
-    history = trainer.train(
-        dataloaders['train'],
-        dataloaders['val'],
-        num_epochs=num_epochs,
-        early_stopping_patience=7,
-        save_dir='./checkpoints'
-    )
-    
-    # Plot training history
-    if save_results:
-        print("\nSaving training history plot...")
-        Path('./results').mkdir(exist_ok=True, parents=True)
-        trainer.plot_history(save_path='./results/training_history.png')
-    
-    # 6. Evaluate Model
-    print("\n" + "="*70)
-    print("STEP 5: Model Evaluation")
-    print("="*70)
-    
-    evaluator = AnomalyDetectionEvaluator(model, device=device)
-    
-    print("\nEvaluating on test set...")
-    metrics, errors, labels, predictions = evaluator.evaluate(dataloaders['test'])
-    
-    # Print detailed report
-    evaluator.print_evaluation_report(metrics, labels, predictions)
-    
-    # Save results
-    if save_results:
-        print("\nSaving evaluation results...")
-        
-        evaluator.plot_evaluation_results(
-            errors, labels, predictions,
-            metrics['threshold'],
-            save_dir='./results'
-        )
-        
-        evaluator.save_results(metrics, './results/metrics.json')
-    
-    # 7. Summary
-    print("\n" + "="*70)
-    print("DEMO COMPLETED SUCCESSFULLY!")
-    print("="*70)
-    
-    print(f"\nKey Results:")
-    print(f"  Accuracy:  {metrics['accuracy']:.4f}")
-    print(f"  Precision: {metrics['precision']:.4f}")
-    print(f"  Recall:    {metrics['recall']:.4f}")
-    print(f"  F1-Score:  {metrics['f1']:.4f}")
-    print(f"  ROC-AUC:   {metrics['roc_auc']:.4f}")
-    
-    if save_results:
-        print(f"\nResults saved to:")
-        print(f"  - Model checkpoint: ./checkpoints/best_model.pt")
-        print(f"  - Training history: ./results/training_history.png")
-        print(f"  - Evaluation plots: ./results/evaluation_results.png")
-        print(f"  - Metrics JSON: ./results/metrics.json")
-    
-    print("\n" + "="*70)
-    
-    return model, metrics, history
+print(f"\n  Feature layout:")
+print(f"    total columns      = {len(col_list)}")
+print(f"    numeric + boolean  = {num_numeric}  (fed to linear projection)")
+print(f"    categorical        = {len(cat_indices)}  (fed to embeddings)")
+print(f"    cat_indices        = {cat_indices}")
+print(f"    cat_vocab_sizes    = {cat_vocab_sizes}")
 
+# ── 3. Preprocess → DataLoaders + class weights ──
+loaders, preprocessor, class_weights = prepare_data(
+    X, y, seq_len=10, stride=5, batch_size=128
+)
 
-if __name__ == "__main__":
-    import argparse
-    
-    parser = argparse.ArgumentParser(description='Transformer-CVAE Anomaly Detection Demo')
-    parser.add_argument('--samples', type=int, default=15000,
-                       help='Number of samples to generate (default: 15000)')
-    parser.add_argument('--epochs', type=int, default=20,
-                       help='Number of training epochs (default: 20)')
-    parser.add_argument('--no-save', action='store_true',
-                       help='Do not save results')
-    
-    args = parser.parse_args()
-    
-    # Run demo
-    model, metrics, history = run_demo(
-        n_samples=args.samples,
-        num_epochs=args.epochs,
-        save_results=not args.no_save
-    )
-    
-    print("\nDemo completed! We can now:")
-    print("  1. Check the results in ./results/ directory")
-    print("  2. Load the trained model from ./checkpoints/")
-    print("  3. Explore interactively with notebooks/exploration.ipynb")
-    print("  4. Adapt the code for your own datasets")
+# ── 4. Build model ────────────────────────────────────
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
+model = NetworkTransformer(
+    num_numeric=num_numeric,
+    cat_indices=cat_indices,
+    cat_vocab_sizes=cat_vocab_sizes,
+    num_classes=NUM_CLASSES,
+    d_model=128,
+    nhead=8,
+    num_layers=3,
+    dim_feedforward=512,
+    cat_embed_dim=16,
+    dropout=0.1,
+)
+
+# ── 5. Train ──────────────────────────────────────────
+trainer = Trainer(model, class_weights, device, lr=1e-3)
+trainer.train(
+    loaders['train'],
+    loaders['val'],
+    num_epochs=10,
+    early_stop_patience=15,
+)
+trainer.plot_history()
+
+# ── 6. Evaluate on test set ───────────────────────────
+#   Load the best checkpoint (saved during training by val accuracy).
+model.load_state_dict(
+    torch.load('./checkpoints/best_model.pt', map_location=device)
+)
+report, cm = trainer.evaluate(loaders['test'])
+print("\n" + report)
+trainer.plot_confusion_matrix(cm)

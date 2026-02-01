@@ -1,0 +1,78 @@
+----- preprocess.py -----------
+Preprocessing, sequencing, and DataLoader creation for TON_IOT transformer.
+
+Full pipeline executed by prepare_data():
+    1. Flow-level stratified split  (70 / 15 / 15)
+       Done FIRST so the scaler never sees val/test data and so
+       sliding-window sequences cannot overlap across splits.
+    2. Log-transform skewed numeric columns  (fit on train, applied to all)
+    3. RobustScale numeric columns only
+       Categorical & boolean encodings stay as integers — they feed into
+       nn.Embedding layers in the model, so scaling them would be wrong.
+    4. Grouped sequence creation: sliding window WITHIN each class
+       Sequences never cross class boundaries → every sequence has one clean label.
+    5. Sequence-level shuffle  (safe: each sequence is self-contained)
+    6. Wrap in PyTorch DataLoaders  +  compute class weights
+
+Why RobustScaler over StandardScaler?
+    DDoS/DoS flows can have byte counts in the millions.  StandardScaler
+    would compress all normal traffic into a tiny band around zero.
+    RobustScaler uses median + IQR, so those outliers don't dominate.
+
+Why log1p before scaling?
+    Byte counts and packet counts follow heavy-tailed (power-law) distributions.
+    log1p compresses the tail, making the values roughly Gaussian — which is
+    what both the scaler and the downstream transformer expect.
+
+Why split at the flow level, not the sequence level?
+    With a sliding window (seq_len=10, stride=5), consecutive sequences
+    share 5 flows.  If you split after sequencing, a training sequence
+    and a test sequence can share flows → data leakage.
+    Splitting flows first, then sequencing each split independently,
+    guarantees zero overlap.
+
+--- model.py -------
+"""
+Transformer encoder for 10-class network traffic classification.
+
+Architecture (in order of data flow):
+
+    raw input  (batch, seq_len, F)
+        │
+        ├── numeric + boolean columns ──────────────────┐
+        │                                               ▼
+        ├── categorical columns ──► nn.Embedding ──► concat ──► Linear ──► LayerNorm
+        │                                                                      │
+        │                                                            prepend [CLS] token
+        │                                                                      │
+        │                                                         sinusoidal pos encoding
+        │                                                                      │
+        │                                                          Transformer Encoder
+        │                                                                      │
+        │                                                        extract [CLS] output
+        │                                                                      │
+        │                                                   LayerNorm ──► Linear ──► logits (10)
+
+Design decisions (each one matters):
+
+    CLS token instead of mean-pooling:
+        Mean pooling treats every timestep equally.  A scanning attack is
+        10 rapid short connections — the *pattern* across the window is the
+        signal, not the average of individual flows.  The CLS token learns
+        via self-attention which timesteps are most discriminative.
+
+    Categorical embeddings instead of raw integer codes:
+        proto, service, conn_state are label-encoded as 0, 1, 2, …  A linear
+        projection would treat these as ordered numbers (proto=0 "close to"
+        proto=1).  That ordering is meaningless.  Embeddings give each category
+        its own learned vector in a continuous space.
+
+    Pre-norm (norm_first=True) instead of post-norm:
+        Post-norm (the original Transformer paper) is unstable at the start of
+        training when weights are random.  Pre-norm stabilises gradients and
+        lets you use a higher learning rate without warmup-only tricks.
+
+    Boolean features (0 / 1 / 2) treated as numeric:
+        Only 3 possible values each — a linear projection handles them fine.
+        Embedding 7 features with vocab size 3 would add layers for negligible
+        gain.
