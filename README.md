@@ -1,22 +1,40 @@
-# Transformer-based Network Anomaly Detection Prototype (learning and work in progress)
+# Transformer-based Network Anomaly Detection Prototype
 
-A simple prototype demonstrating transformer encoder for reconstruction-based anomaly detection on ToN-IoT network dataset .
+A work-in-progress prototype demonstrating transformer-based modeling for network anomaly detection using the ToN-IoT dataset. This project includes a complete end-to-end pipeline for data preprocessing, model training, inference, and evaluation.
 
-## Goal
-Use Ton_IOT dataset  (WIP)
-Prototype sequential modeling of network traffic using PyTorch TransformerEncoder.  
-Train autoencoder-style reconstruction only on benign traffic → detect anomalies via high reconstruction error.
+---
+
+## Current Prototype
+
+- **Data Pipeline:** Loads and preprocesses ToN-IoT network flows, including numeric, categorical, and boolean features.  
+- **Model:** Transformer Encoder classifier for 10 network traffic types (normal + 9 attacks).  
+- **Evaluation Metrics:**  
+  - ROC Curves  
+  - Response Time  
+  - Feature Importance (Mutual Information)  
+  - PCA (Feature Reduction)  
+  - Classifier Fairness (Equalized Odds)  
+  - K-Fold Confusion Matrices  
+- **Inference:** Complete pipeline from raw flows to predicted classes and probabilities.
+
+> ⚠️ Note: The current high accuracy is mainly due to distinct feature signatures in the dataset. The Transformer is learning class-level centroids rather than deep sequential patterns. This prototype is a stepping stone toward a fully research-grade anomaly detection framework.
+
+---
 
 ## Dataset
-ToN_IoT (network flows)  
-- Official: https://research.unsw.edu.au/projects/toniot-datasets  
 
+- **ToN-IoT (network flows)** – [Official link](https://research.unsw.edu.au/projects/toniot-datasets)  
+
+---
 
 ## Setup
+
 ```bash
 pip install -r requirements.txt
+python demo.py
 ```
-## Future Work
-- Extend to C-VAE / WAE-MMD
-- Additional datasets (CIC-IoMT 2024)
-- Latent space analysis
+##### The long-term vision of this project goes beyond the current prototype. Planned directions include:
+- Implement Conditional Variational Autoencoder (C-VAE) or Wasserstein Autoencoder with MMD (WAE-MMD) for sequence reconstruction.
+- Move from class-wise sequences to chronological, mixed-class sliding windows to capture real temporal dependencies.
+- Extend research to other IoT/Network datasets like CIC-IoMT 2024.
+- Refine the model into a publication-quality study.
