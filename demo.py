@@ -1,7 +1,12 @@
-from load_data  import load_data, NUM_CLASSES
-from preprocess import prepare_data
+import time
+import torch
+from src.load_data  import load_data, NUM_CLASSES
+from src.preprocess import prepare_data
+from src.model import NetworkTransformer
+from src.train import Trainer
 
-csv_path = sys.argv[1] if len(sys.argv) > 1 else "train_test_network.csv"
+# csv_path = sys.argv[1] if len(sys.argv) > 1 else "train_test_network.csv"
+start_time = time.time()
 
 # ── 1. Load raw data ──────────────────────────────────
 X, y = load_data()
@@ -32,6 +37,7 @@ loaders, preprocessor, class_weights = prepare_data(
 # ── 4. Build model ────────────────────────────────────
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
+print(f"\nBuilding model using {device} .......")
 model = NetworkTransformer(
     num_numeric=num_numeric,
     cat_indices=cat_indices,
@@ -50,7 +56,7 @@ trainer = Trainer(model, class_weights, device, lr=1e-3)
 trainer.train(
     loaders['train'],
     loaders['val'],
-    num_epochs=10,
+    num_epochs=100,
     early_stop_patience=15,
 )
 trainer.plot_history()
@@ -63,3 +69,10 @@ model.load_state_dict(
 report, cm = trainer.evaluate(loaders['test'])
 print("\n" + report)
 trainer.plot_confusion_matrix(cm)
+
+end_time = time.time()
+# Calculate elapsed time
+elapsed = end_time - start_time
+print(f"\n{'='*58}")
+print(f"Time taken: {elapsed:.4f} seconds")
+print(f"{'='*58}")

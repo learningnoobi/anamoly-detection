@@ -8,8 +8,8 @@ from pathlib import Path
 from typing import Dict
 import matplotlib.pyplot as plt
 from sklearn.metrics import classification_report, confusion_matrix
-from model import NetworkTransformer
-from load_data import ATTACK_TYPES, NUM_CLASSES
+from .model import NetworkTransformer
+from .load_data import ATTACK_TYPES, NUM_CLASSES
 
 
 class EarlyStopping:

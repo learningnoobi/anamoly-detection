@@ -35,23 +35,18 @@ class PositionalEncoding(nn.Module):
         return self.dropout(x + self.pe[:, : x.size(1)])
 
 
-# ─────────────────────────────────────────────────────────────
-# Main model
-# ─────────────────────────────────────────────────────────────
-
 class NetworkTransformer(nn.Module):
-
     def __init__(self,
                  num_numeric: int,            # count of numeric + boolean columns
                  cat_indices: list,           # positional indices of categorical columns in the input tensor
                  cat_vocab_sizes: list,       # number of unique values per categorical (same order as cat_indices)
-                 num_classes: int  = 10,
-                 d_model:     int  = 128,
-                 nhead:       int  = 8,
-                 num_layers:  int  = 3,
+                 num_classes: int = 10,
+                 d_model: int = 128,
+                 nhead: int = 8,
+                 num_layers: int = 3,
                  dim_feedforward: int = 512,
-                 cat_embed_dim:   int = 16,   # embedding dimension per categorical feature
-                 dropout:     float = 0.1):
+                 cat_embed_dim: int = 16,   # embedding dimension per categorical feature
+                 dropout: float = 0.1):
         super().__init__()
 
         self.cat_indices = cat_indices        # saved so forward() knows which columns to embed
@@ -94,8 +89,6 @@ class NetworkTransformer(nn.Module):
             nn.Linear(d_model, num_classes),
         )
 
-    # ── forward ───────────────────────────────────────────────
-
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
         Parameters
@@ -111,41 +104,28 @@ class NetworkTransformer(nn.Module):
             nn.CrossEntropyLoss — it applies log-softmax internally.
         """
         B, S, F = x.shape
-
-        # 1. split numeric vs categorical
         num_idx = [i for i in range(F) if i not in self.cat_indices]
-        x_num   = x[:, :, num_idx]                           # (B, S, num_numeric)
+        x_num   = x[:, :, num_idx]                          
 
-        # 2. embed each categorical column separately, then concatenate
         embeds = []
         for i, col_idx in enumerate(self.cat_indices):
             embeds.append(
-                self.embeddings[i](x[:, :, col_idx].long())  # (B, S, cat_embed_dim)
+                self.embeddings[i](x[:, :, col_idx].long()) 
             )
-        x_cat = torch.cat(embeds, dim=-1)                    # (B, S, num_cat * embed_dim)
+        x_cat = torch.cat(embeds, dim=-1)                    
 
-        # 3. project combined input to d_model
         h = self.input_norm(
             self.input_proj(torch.cat([x_num, x_cat], dim=-1))
-        )                                                    # (B, S, d_model)
-
-        # 4. prepend CLS token
-        cls = self.cls_token.expand(B, -1, -1)               # (B, 1, d_model)
-        h   = torch.cat([cls, h], dim=1)                     # (B, S+1, d_model)
-
-        # 5. add positional encoding
+        )                                                   
+        cls = self.cls_token.expand(B, -1, -1)               
+        h   = torch.cat([cls, h], dim=1)                  
         h = self.pos_enc(h)
 
-        # 6. transformer encoder
-        h = self.encoder(h)                                  # (B, S+1, d_model)
+        h = self.encoder(h)                                 
 
-        # 7. extract CLS token → classify
-        return self.head(h[:, 0])                            # (B, num_classes)
+        return self.head(h[:, 0])                            
 
 
-# ─────────────────────────────────────────────────────────────
-# Quick sanity check
-# ─────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
     # Simulate the feature layout produced by load_data + preprocess:
