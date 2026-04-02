@@ -7,17 +7,8 @@ warnings.filterwarnings('ignore')
 from pathlib import Path
 
 
-# ─────────────────────────────────────────────────────────
 # FEATURE DEFINITIONS  (from TON_IOT feature description PDF)
-# ─────────────────────────────────────────────────────────
 
-# Numeric features → log-transformed (if skewed) + RobustScaled in preprocess.py
-#
-# *** IMPORTANT ***
-# src_ip_bytes and dst_ip_bytes are BYTE COUNTS (total length of the IP header
-# field), NOT raw IP addresses.  They carry real traffic-volume signal and must
-# be kept.  The original code dropped them by mistake because their names
-# contain "ip".
 NUMERIC_FEATURES = [
     # Connection activity
     'duration', 'src_bytes', 'dst_bytes', 'missed_bytes',
@@ -25,15 +16,17 @@ NUMERIC_FEATURES = [
     'src_pkts', 'src_ip_bytes', 'dst_pkts', 'dst_ip_bytes',
     # Ports (numeric, will be scaled)
     'src_port', 'dst_port',
-    # DNS numeric  (0 when DNS is not active — that zero IS informative)
-    'dns_qclass', 'dns_qtype', 'dns_rcode',
     # HTTP numeric (0 when HTTP is not active — also informative)
     'http_trans_depth', 'http_request_body_len',
-    'http_response_body_len', 'http_status_code',
+    'http_response_body_len', 
 ]
 
 # Categorical → label-encoded integer → will be embedded (nn.Embedding) in model
-CATEGORICAL_FEATURES = ['proto', 'service', 'conn_state']
+CATEGORICAL_FEATURES = [
+    'proto', 'service', 'conn_state',
+    'dns_qclass', 'dns_qtype', 'dns_rcode', 'http_status_code'
+]
+GROUP_COL = ["src_ip", "dst_ip"]
 
 # Boolean features stored as "T" / "F" / "-" in the CSV.
 # "-" means the protocol was NOT active for that flow.
@@ -66,7 +59,7 @@ ATTACK_TYPES = [
 NUM_CLASSES  = len(ATTACK_TYPES)   # 10
 
 
-def load_data(filepath: str ='train_test_network.csv') -> Tuple[pd.DataFrame, pd.Series]:
+def load_data(filepath: str ='train_test_network.csv',need_group_for_sequence=False) -> Tuple[pd.DataFrame, pd.Series]:
     """
     Load TON_IOT CSV, select and encode features.
 
@@ -78,7 +71,8 @@ def load_data(filepath: str ='train_test_network.csv') -> Tuple[pd.DataFrame, pd
     y : pd.Series  (int64)
         Class index 0-9, ordered by ATTACK_TYPES.
     """
-    filepath =  f'../data/{filepath}'
+    print(f"---- readin from the file oho {filepath}---")
+    filepath =  f'./data/{filepath}'
     df = pd.read_csv(filepath, low_memory=False)
     df.columns = df.columns.str.strip().str.lower()   # normalise casing
     print(f"Loaded {len(df):,} rows x {len(df.columns)} columns\n")
@@ -132,7 +126,13 @@ def load_data(filepath: str ='train_test_network.csv') -> Tuple[pd.DataFrame, pd
 
     # ── 5. Assemble final feature matrix ──
     feature_cols = NUMERIC_FEATURES + cat_enc_cols + bool_enc_cols
-    X = df[feature_cols].copy()
+    # X = df[feature_cols].copy()
+    if need_group_for_sequence:
+        group_cols = ["src_ip", "dst_ip", "proto", "ts"]
+        keep_cols = list(set(feature_cols + group_cols))
+        X = df[keep_cols].copy()
+    else:
+        X = df[feature_cols].copy()
 
     # ── Summary ──
     print(f"\n{'='*58}")

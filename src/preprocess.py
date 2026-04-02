@@ -11,7 +11,7 @@ import pickle
 
 from load_data import NUMERIC_FEATURES, ATTACK_TYPES, NUM_CLASSES
 
-# Columns to log1p — heavy right-tailed counts / durations.
+# Columns to log1p — heavy right-tailed counts / 
 # Ports, status codes, and small integer codes (dns_qclass etc.) are left raw.
 LOG_COLS = {
     'duration', 'src_bytes', 'dst_bytes', 'missed_bytes',
@@ -182,6 +182,9 @@ def prepare_data(
         test_size=test_ratio / temp,          # e.g. 0.15/0.30 = 0.5 of temp
         random_state=42, stratify=y_temp
     )
+    print("Train distribution:\n", y_train.value_counts(normalize=True).sort_index().round(4) * 100)
+    print("Val distribution:\n",   y_val.value_counts(normalize=True).sort_index().round(4) * 100)
+    print("Test distribution:\n",  y_test.value_counts(normalize=True).sort_index().round(4) * 100)
     print(f"  Flows — train: {len(X_train):,}  "
           f"val: {len(X_val):,}  test: {len(X_test):,}\n")
 

@@ -64,3 +64,8 @@ Thumbs.db
 *.tmp
 temp/
 tmp/
+try.ipynb
+pandas.ipynb
+cvae.ipynb
+
+Network_dataset_*
