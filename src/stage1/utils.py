@@ -216,9 +216,12 @@ def load_data_sequences(normal_path="normal_data.csv"):
     X_df, y = _load_raw(normal_path, need_group_for_sequence=True)
 
     # ─────────────────────────────────────────────
-    # 1. Sort by time FIRST (critical)
+    # 1. Sort by time FIRST if available
     # ─────────────────────────────────────────────
-    X_df = X_df.sort_values("ts").reset_index(drop=True)
+    if "ts" in X_df.columns:
+        X_df = X_df.sort_values("ts").reset_index(drop=True)
+    else:
+        X_df = X_df.reset_index(drop=True)
 
     # ─────────────────────────────────────────────
     # 2. Time-based split (NOT random)
@@ -231,7 +234,7 @@ def load_data_sequences(normal_path="normal_data.csv"):
     # ─────────────────────────────────────────────
     # 3. Identify feature columns (exclude grouping)
     # ─────────────────────────────────────────────
-    GROUP_COLS = ["src_ip", "dst_ip", "proto", "ts"]
+    GROUP_COLS = ["src_ip", "dst_ip", "proto"] + (["ts"] if "ts" in X_df.columns else [])
 
     feature_cols = [col for col in X_df.columns if col not in GROUP_COLS]
 
@@ -282,7 +285,8 @@ def load_data_sequences(normal_path="normal_data.csv"):
         grouped = df.groupby(["src_ip", "dst_ip", "proto"])
 
         for _, group in grouped:
-            group = group.sort_values("ts")
+            if "ts" in group.columns:
+                group = group.sort_values("ts")
 
             X = group[feature_cols].values
 
@@ -555,7 +559,7 @@ def evaluate_model_sequences(
     X_test_df, y_test_raw = _load_raw(
         test_path, need_group_for_sequence=True)
 
-    GROUP_COLS   = ['src_ip', 'dst_ip', 'proto', 'ts']
+    GROUP_COLS = ['src_ip', 'dst_ip', 'proto'] + (['ts'] if 'ts' in X_test_df.columns else [])
     feature_cols = [c for c in X_test_df.columns if c not in GROUP_COLS]
 
     # Apply same preprocessor — log + scale only
@@ -577,7 +581,8 @@ def evaluate_model_sequences(
     # Grouped sequences — same logic as training
     seqs, labels = [], []
     for _, group in X_test_df.groupby(['src_ip', 'dst_ip', 'proto']):
-        group = group.sort_values('ts')
+        if 'ts' in group.columns:
+            group = group.sort_values('ts')
         X_g = group[feature_cols].values.astype(np.float32)
         y_g = group['_label'].values
 

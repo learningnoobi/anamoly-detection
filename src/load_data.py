@@ -133,7 +133,7 @@ def load_data(filepath: str ='train_test_network.csv',need_group_for_sequence=Fa
         # Never use set() here — Python hash randomisation (PYTHONHASHSEED)
         # changes the order between runs, so the scaler indices fitted during
         # training would map to wrong columns at evaluation time.
-        keep_cols = feature_cols + [c for c in group_cols if c not in feature_cols]
+        keep_cols = feature_cols + [c for c in group_cols if c not in feature_cols and c in df.columns]
         X = df[keep_cols].copy()
     else:
         X = df[feature_cols].copy()
