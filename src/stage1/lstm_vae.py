@@ -98,14 +98,18 @@ class LSTMVAEModel(nn.Module):
         with torch.no_grad():
             x_hat, mu, logvar = self.forward(x)
 
-            # Reconstruction error
-            recon = ((x - x_hat) ** 2).mean(dim=[1, 2])
+            # Per-timestep reconstruction error: (B, T)
+            per_step = ((x - x_hat) ** 2).mean(dim=2)
 
-            # KL divergence
-            kl = -0.5 * torch.mean(
-                1 + logvar - mu.pow(2) - logvar.exp(),
-                dim=[1, 2]
-            )
+            # Use max over timesteps so a single anomalous step is not
+            # averaged away by 9 normal ones.
+            recon = per_step.max(dim=1).values  # (B,)
+
+            # KL divergence — mu/logvar are (B, d_z), so reduce over dim=1.
+            # Bug fix: was dim=[1, 2] which caused IndexError on 2-D tensors.
+            kl = -0.5 * (
+                1 + logvar - mu.pow(2) - logvar.exp()
+            ).mean(dim=1)  # (B,)
 
             score = recon + beta * kl
 

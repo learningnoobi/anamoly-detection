@@ -113,7 +113,6 @@ def load_data(normal_path="normal_data.csv"):
     # Fit preprocessor on train only, transform both
     prep = AnomalyPreprocessor()
     X_train = prep.fit_transform(X_train_df)
-    X_train = prep.fit_transform(X_train_df)
 
     # Check per-column max to find the culprit
     col_names = X_train_df.columns.tolist()
